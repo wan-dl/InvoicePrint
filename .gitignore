@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Swift / SwiftPM 构建产物
+.build/
+.swiftpm/
+Package.resolved
+*.o
+*.d
+*.a
+*.swiftdeps
+*.swiftdeps~
+*.dia
+*.dia~
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+*.abi.json
+*.dSYM/
+
+# Xcode
+DerivedData/
+*.xcuserstate
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# 应用打包产物
+dist/
+*.app
+
+# 图标生成的中间产物（保留 Assets/AppIcon.icns）
+Assets/AppIcon.iconset/
+Assets/icon_master.png
+
+# 合并输出 / 测试产物
+merged/
+合并_*.pdf
