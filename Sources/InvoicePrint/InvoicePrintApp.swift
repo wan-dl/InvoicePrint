@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @main
 struct InvoicePrintApp: App {
@@ -9,6 +10,7 @@ struct InvoicePrintApp: App {
         Window("发票合并打印", id: "main") {
             ContentView()
                 .environmentObject(state)
+                .preferredColorScheme(.light)
                 .frame(minWidth: 820, minHeight: 520)
         }
         .windowToolbarStyle(.unified)
@@ -19,6 +21,8 @@ struct InvoicePrintApp: App {
                     .keyboardShortcut("o", modifiers: .command)
                 Button("添加文件夹…") { state.addDirectory() }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Button("从链接下载…") { state.isDownloadPresented = true }
+                    .keyboardShortcut("d", modifiers: [.command, .shift])
             }
             CommandGroup(after: .newItem) {
                 Divider()
@@ -33,6 +37,10 @@ struct InvoicePrintApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.appearance = NSAppearance(named: .aqua)
+    }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         let urls = urls

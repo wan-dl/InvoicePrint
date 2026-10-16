@@ -14,16 +14,30 @@ public enum ItemKind: String, Codable, Sendable {
     }
 }
 
+public enum ItemOrigin: String, Codable, Sendable {
+    case local
+    case download
+
+    public var title: String {
+        switch self {
+        case .local: return "本地"
+        case .download: return "网络"
+        }
+    }
+}
+
 public struct InputItem: Identifiable, Hashable, Sendable {
     public let id = UUID()
     public let url: URL
     public let kind: ItemKind
     public let pageCount: Int
+    public let origin: ItemOrigin
 
-    public init(url: URL, kind: ItemKind, pageCount: Int) {
+    public init(url: URL, kind: ItemKind, pageCount: Int, origin: ItemOrigin = .local) {
         self.url = url
         self.kind = kind
         self.pageCount = pageCount
+        self.origin = origin
     }
 
     public var name: String { url.lastPathComponent }

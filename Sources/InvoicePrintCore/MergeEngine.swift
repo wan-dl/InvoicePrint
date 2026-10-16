@@ -174,7 +174,7 @@ public enum MergeEngine {
 
     // MARK: - File import helpers
 
-    public static func loadInputItems(urls: [URL]) -> [InputItem] {
+    public static func loadInputItems(urls: [URL], origin: ItemOrigin = .local) -> [InputItem] {
         urls.compactMap { url in
             guard url.isFileURL, let kind = ItemKind.from(url: url) else { return nil }
             let pages: Int
@@ -184,7 +184,7 @@ public enum MergeEngine {
             case .image:
                 pages = 1
             }
-            return InputItem(url: url, kind: kind, pageCount: pages)
+            return InputItem(url: url, kind: kind, pageCount: pages, origin: origin)
         }
     }
 

@@ -41,6 +41,7 @@ struct SidebarView: View {
             Menu {
                 Button { state.addFiles() } label: { Label("添加文件…", systemImage: "doc.badge.plus") }
                 Button { state.addDirectory() } label: { Label("添加文件夹…", systemImage: "folder.badge.plus") }
+                Button { state.isDownloadPresented = true } label: { Label("从链接下载…", systemImage: "arrow.down.to.line") }
                 Divider()
                 Menu("排序方式") {
                     ForEach(SortMode.allCases) { mode in
@@ -112,6 +113,22 @@ struct FileRow: View {
     private var tint: Color { item.kind == .pdf ? .red : .blue }
     private var symbol: String { item.kind == .pdf ? "doc.richtext.fill" : "photo.fill" }
 
+    private var originBadge: some View {
+        HStack(spacing: 2) {
+            Image(systemName: item.origin == .download ? "globe" : "folder")
+                .font(.system(size: 8, weight: .semibold))
+            Text(item.origin.title)
+                .font(.system(size: 9, weight: .semibold))
+        }
+        .foregroundStyle(item.origin == .download ? Color.orange : Color.secondary)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 0.5)
+        .background(
+            Capsule().fill((item.origin == .download ? Color.orange : Color.secondary).opacity(0.12))
+        )
+        .help(item.origin == .download ? "从网络下载" : "从本地导入")
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             ZStack {
@@ -137,6 +154,7 @@ struct FileRow: View {
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
+                    originBadge
                 }
             }
 

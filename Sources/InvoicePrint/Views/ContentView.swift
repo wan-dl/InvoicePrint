@@ -21,6 +21,10 @@ struct ContentView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar { toolbarContent }
+        .sheet(isPresented: $state.isDownloadPresented) {
+            DownloadSheet()
+                .environmentObject(state)
+        }
         .overlay { dropOverlay }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
@@ -54,6 +58,17 @@ struct ContentView: View {
             }
             .help("添加 PDF 或图片（⌘O）")
             .disabled(state.isBuilding)
+        }
+
+        ToolbarItem(placement: .navigation) {
+            Button {
+                state.isDownloadPresented = true
+            } label: {
+                Image(systemName: "arrow.down.to.line")
+                    .font(.system(size: 10, weight: .regular))
+            }
+            .help("从 URL 下载发票到临时目录")
+            .disabled(state.isDownloading)
         }
 
         ToolbarItemGroup(placement: .primaryAction) {

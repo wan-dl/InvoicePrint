@@ -17,6 +17,9 @@ final class AppState: ObservableObject {
     @Published var isBuilding = false
     @Published var amounts: [UUID: Double] = [:]
     @Published var amountsLoading = false
+    @Published var isDownloadPresented = false
+    @Published var downloadURLText = ""
+    @Published var isDownloading = false
 
     private var buildWorkItem: DispatchWorkItem?
     private var cancellables = Set<AnyCancellable>()
@@ -74,8 +77,8 @@ final class AppState: ObservableObject {
         append(urls: urls)
     }
 
-    func append(urls: [URL]) {
-        let newItems = MergeEngine.loadInputItems(urls: urls)
+    func append(urls: [URL], origin: ItemOrigin = .local) {
+        let newItems = MergeEngine.loadInputItems(urls: urls, origin: origin)
         guard !newItems.isEmpty else {
             errorMessage = "未识别到支持的 PDF 或图片文件"
             return
@@ -226,9 +229,144 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - 从链接下载
+
+    func startDownload() {
+        let links = parseDownloadLinks()
+        guard !links.isEmpty else {
+            errorMessage = "请输入有效的 http/https 链接"
+            return
+        }
+        let dir = Self.todayTempDirectory()
+        isDownloading = true
+        status = "正在下载 \(links.count) 个文件…"
+        Task.detached(priority: .userInitiated) {
+            var saved: [URL] = []
+            var failures: String = ""
+            for link in links {
+                do {
+                    let url = try await Self.download(link, into: dir)
+                    saved.append(url)
+                } catch {
+                    failures += "\n• \(link.absoluteString)：\(error.localizedDescription)"
+                }
+            }
+            let savedURLs = saved
+            let failureText = failures
+            await MainActor.run {
+                self.isDownloading = false
+                if !savedURLs.isEmpty {
+                    self.append(urls: savedURLs, origin: .download)
+                }
+                if !failureText.isEmpty {
+                    self.errorMessage = "部分链接下载失败：" + failureText
+                } else if !savedURLs.isEmpty {
+                    self.status = "已下载 \(savedURLs.count) 个文件到 \(dir.path)"
+                }
+            }
+        }
+    }
+
+    private func parseDownloadLinks() -> [URL] {
+        let separators = CharacterSet(charactersIn: "\n\r\t ,;，；")
+        return downloadURLText
+            .components(separatedBy: separators)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .compactMap { URL(string: $0) }
+            .filter { let s = $0.scheme?.lowercased(); return s == "http" || s == "https" }
+    }
+
+    /// 系统临时目录下的当天日期文件夹，例如 …/T/2026-10-16
+    nonisolated static func todayTempDirectory() -> URL {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let name = f.string(from: Date())
+        return FileManager.default.temporaryDirectory.appendingPathComponent(name, isDirectory: true)
+    }
+
+    nonisolated static func download(_ link: URL, into dir: URL) async throws -> URL {
+        var request = URLRequest(url: link)
+        request.timeoutInterval = 60
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X) InvoicePrint", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw DownloadError.badStatus(http.statusCode)
+        }
+        guard !data.isEmpty else { throw DownloadError.emptyContent }
+
+        let ext = resolvedExtension(for: link, response: response, data: data)
+        let name = resolvedName(for: link, response: response, ext: ext)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dest = uniqueDestination(in: dir, name: name)
+        try data.write(to: dest, options: .atomic)
+        return dest
+    }
+
+    nonisolated static func resolvedExtension(for link: URL, response: URLResponse, data: Data) -> String {
+        if ItemKind.from(url: link) != nil { return link.pathExtension.lowercased() }
+        if let mime = response.mimeType?.lowercased() {
+            switch true {
+            case mime.contains("pdf"): return "pdf"
+            case mime.contains("png"): return "png"
+            case mime.contains("jpeg"), mime.contains("jpg"): return "jpg"
+            case mime.contains("tiff"): return "tiff"
+            case mime.contains("heic"): return "heic"
+            case mime.contains("gif"): return "gif"
+            case mime.contains("bmp"): return "bmp"
+            case mime.contains("webp"): return "webp"
+            default: break
+            }
+        }
+        if data.count >= 4, data.prefix(4) == Data([0x25, 0x50, 0x44, 0x46]) { return "pdf" }
+        if data.count >= 8, data.prefix(8) == Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return "png" }
+        if data.count >= 3, data.prefix(3) == Data([0xFF, 0xD8, 0xFF]) { return "jpg" }
+        let pathExt = link.pathExtension.lowercased()
+        return pathExt.isEmpty ? "pdf" : pathExt
+    }
+
+    nonisolated static func resolvedName(for link: URL, response: URLResponse, ext: String) -> String {
+        var base = response.suggestedFilename ?? link.lastPathComponent
+        base = base.removingPercentEncoding ?? base
+        if base.isEmpty { base = "invoice" }
+        let ns = base as NSString
+        if ns.pathExtension.isEmpty { return "\(base).\(ext)" }
+        if ItemKind.from(url: URL(fileURLWithPath: base)) == nil {
+            return "\(ns.deletingPathExtension).\(ext)"
+        }
+        return base
+    }
+
+    nonisolated static func uniqueDestination(in dir: URL, name: String) -> URL {
+        let ns = name as NSString
+        let base = ns.deletingPathExtension
+        let ext = ns.pathExtension
+        var candidate = dir.appendingPathComponent(name)
+        var index = 1
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            let next = ext.isEmpty ? "\(base)-\(index)" : "\(base)-\(index).\(ext)"
+            candidate = dir.appendingPathComponent(next)
+            index += 1
+        }
+        return candidate
+    }
+
     private static func timestamp() -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyyMMdd_HHmmss"
         return f.string(from: Date())
+    }
+}
+
+enum DownloadError: LocalizedError {
+    case badStatus(Int)
+    case emptyContent
+
+    var errorDescription: String? {
+        switch self {
+        case .badStatus(let code): return "服务器返回状态码 \(code)"
+        case .emptyContent: return "下载内容为空"
+        }
     }
 }
